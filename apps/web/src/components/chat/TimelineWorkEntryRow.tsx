@@ -9,6 +9,7 @@ import {
 import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   type EnvironmentId,
+  isOrchestrationV2WorkActive,
   ThreadId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -32,7 +33,11 @@ import {
 } from "../../session-logic";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
-import { ChevronRightIcon, CircleAlertIcon, XIcon, RotateCcwIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon, CircleAlertIcon, XIcon, RotateCcwIcon } from "lucide-react";
+import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { DateTime } from "effect";
+import { Spinner } from "../ui/spinner";
+import { tickTextContent } from "~/lib/tickTextContent";
 import { Button, InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { useThreadShell } from "../../state/entities";
@@ -141,6 +146,35 @@ export function ReasoningTraceContent({ entries }: { entries: ReadonlyArray<Time
         />
       ))}
     </WorkLogDetails>
+  );
+}
+
+function ToolStepStatus({
+  item,
+}: {
+  item: NonNullable<TimelineWorkEntry["projectedItem"]>["item"];
+}) {
+  const live = isOrchestrationV2WorkActive(item.status);
+  const startMs = item.startedAt ? DateTime.toEpochMillis(item.startedAt) : null;
+  const endMs = item.completedAt ? DateTime.toEpochMillis(item.completedAt) : null;
+  if (startMs === null || (!live && endMs === null)) {
+    return null;
+  }
+  return (
+    <span className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs">
+      {live ? (
+        <Spinner size="xs" tone="muted" />
+      ) : item.status === "completed" ? (
+        <CheckIcon aria-hidden className="size-3 shrink-0 text-success" />
+      ) : null}
+      <span
+        ref={tickTextContent(
+          (nowMs) => formatDuration(Math.max(0, (live ? nowMs : (endMs ?? nowMs)) - startMs)),
+          live,
+        )}
+        className="tabular-nums"
+      />
+    </span>
   );
 }
 
@@ -534,6 +568,9 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           !showDestructiveRowStyle &&
           !toolIconAcceptsTint(entryToolIcon) ? (
             <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
+          ) : null}
+          {workLogEntryIsToolLike(workEntry) && !isReasoning && workEntry.projectedItem ? (
+            <ToolStepStatus item={workEntry.projectedItem.item} />
           ) : null}
           <TimelineRowTimestamp createdAt={workEntry.createdAt} timestampFormat={timestampFormat} />
           <span

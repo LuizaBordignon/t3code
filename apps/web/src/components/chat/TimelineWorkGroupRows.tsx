@@ -1,7 +1,8 @@
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
-import { WorkLogButton, WorkLogList, WorkLogRow } from "./WorkLog";
+import { WorkLogButton, WorkLogDetails, WorkLogList, WorkLogRow } from "./WorkLog";
+import { V2ItemInspector } from "./V2ItemInspector";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
-import { type ToolActivityIcon } from "@t3tools/contracts";
+import { isOrchestrationV2WorkActive, type ToolActivityIcon } from "@t3tools/contracts";
 import { liveThoughtLine } from "@t3tools/client-runtime/work-log/presentation";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
 import { observeResize } from "~/lib/observeResize";
@@ -525,80 +526,101 @@ export function LiveWorkEntryTimelineRow({
       ? liveThoughtLine((row.thought.detail ?? "").slice(0, THOUGHT_PREVIEW_SOURCE_MAX_LENGTH))
       : "";
   const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
+  const runningCommand =
+    !row.expanded &&
+    row.entry.projectedItem?.item.type === "command_execution" &&
+    isOrchestrationV2WorkActive(row.entry.projectedItem.item.status)
+      ? row.entry.projectedItem
+      : undefined;
 
   return (
-    <button
-      type="button"
-      className={cn(
-        "group/live-work flex w-full max-w-full cursor-pointer rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
-        thoughtLine ? "flex-col items-start" : "min-h-6 items-center",
-      )}
-      aria-label={
-        failed
-          ? `${thoughtLine ? `${thoughtLine} ` : ""}${threadLabel?.text ?? label}, tool call failed`
-          : undefined
-      }
-      aria-expanded={row.expanded}
-      onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
-    >
-      {thoughtLine ? (
-        <WorkLogRow
-          icon={
-            <span className="flex size-4 items-center justify-center text-icon-muted">
-              <ToolActivityIconView
-                icon={undefined}
-                fallbackName="brain"
-                className="block size-4 shrink-0 stroke-2"
-                muted
-              />
-            </span>
-          }
+    <>
+      <button
+        type="button"
+        className={cn(
+          "group/live-work flex w-full max-w-full cursor-pointer rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
+          thoughtLine ? "flex-col items-start" : "min-h-6 items-center",
+        )}
+        aria-label={
+          failed
+            ? `${thoughtLine ? `${thoughtLine} ` : ""}${threadLabel?.text ?? label}, tool call failed`
+            : undefined
+        }
+        aria-expanded={row.expanded}
+        onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
+      >
+        {thoughtLine ? (
+          <WorkLogRow
+            icon={
+              <span className="flex size-4 items-center justify-center text-icon-muted">
+                <ToolActivityIconView
+                  icon={undefined}
+                  fallbackName="brain"
+                  className="block size-4 shrink-0 stroke-2"
+                  muted
+                />
+              </span>
+            }
+            label={
+              <span className="line-clamp-4">
+                <ChatMarkdown
+                  inline
+                  text={thoughtLine}
+                  cwd={ctx.markdownCwd}
+                  parseRawHtml={false}
+                  extraRemarkPlugins={THOUGHT_PREVIEW_PLUGINS}
+                />
+              </span>
+            }
+            wrapLabel
+          />
+        ) : null}
+        <LiveActivityRow
           label={
-            <span className="line-clamp-4">
+            thoughtIsStatus ? (
+              row.active ? (
+                "Thinking"
+              ) : (
+                "Thought"
+              )
+            ) : row.entry.itemType === "reasoning" ? (
               <ChatMarkdown
                 inline
-                text={thoughtLine}
+                text={(row.entry.detail ?? label).slice(0, THOUGHT_PREVIEW_SOURCE_MAX_LENGTH)}
                 cwd={ctx.markdownCwd}
                 parseRawHtml={false}
-                extraRemarkPlugins={THOUGHT_PREVIEW_PLUGINS}
+                extraRemarkPlugins={row.active ? THINKING_PREVIEW_PLUGINS : THOUGHT_PREVIEW_PLUGINS}
               />
-            </span>
-          }
-          wrapLabel
-        />
-      ) : null}
-      <LiveActivityRow
-        label={
-          thoughtIsStatus ? (
-            row.active ? (
-              "Thinking"
+            ) : threadLabel ? (
+              <ThreadReadLabel
+                label={threadLabel}
+                environmentId={ctx.activeThreadEnvironmentId}
+                linked={false}
+              />
             ) : (
-              "Thought"
+              label
             )
-          ) : row.entry.itemType === "reasoning" ? (
-            <ChatMarkdown
-              inline
-              text={(row.entry.detail ?? label).slice(0, THOUGHT_PREVIEW_SOURCE_MAX_LENGTH)}
-              cwd={ctx.markdownCwd}
-              parseRawHtml={false}
-              extraRemarkPlugins={row.active ? THINKING_PREVIEW_PLUGINS : THOUGHT_PREVIEW_PLUGINS}
-            />
-          ) : threadLabel ? (
-            <ThreadReadLabel
-              label={threadLabel}
-              environmentId={ctx.activeThreadEnvironmentId}
-              linked={false}
-            />
-          ) : (
-            label
-          )
-        }
-        iconName={workEntryIconName(row.entry)}
-        toolIcon={row.entry.toolIcon ?? row.entry.toolSource?.icon}
-        failed={failed}
-        active={row.active}
-      />
-    </button>
+          }
+          iconName={workEntryIconName(row.entry)}
+          toolIcon={row.entry.toolIcon ?? row.entry.toolSource?.icon}
+          failed={failed}
+          active={row.active}
+        />
+      </button>
+      {runningCommand ? (
+        <WorkLogDetails kind="panel">
+          <V2ItemInspector
+            projectedItem={runningCommand}
+            environmentId={ctx.activeThreadEnvironmentId}
+            cwd={ctx.markdownCwd}
+            workspaceRoot={ctx.workspaceRoot}
+            onOpenToolDiff={ctx.onOpenToolDiff}
+            onImageExpand={ctx.onImageExpand}
+            source={ctx.turnItemSource}
+          />
+        </WorkLogDetails>
+      ) : null}
+    </>
   );
 }
 
